@@ -1,1 +1,1 @@
-# my-custom-harness-
+# serial-processing-harness
