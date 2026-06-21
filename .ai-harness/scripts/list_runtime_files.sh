@@ -6,7 +6,7 @@
 #
 # 포함: .ai-harness/ · .claude/ · .codex/ · AGENTS.md
 # 제외: scripts/bench/compare/(제3자 비교 도구) · *-workspace/(스킬 개발 워크스페이스)
-#       · evals/(스킬 회귀 픽스처) · Codex 크레덴셜(auth/credentials/*.key/*.pem)
+#       · evals/(스킬 회귀 픽스처) · skills/*-dev/(dev 전용 스킬, 예: 배포) · Codex 크레덴셜
 set -euo pipefail
 HROOT="${1:-$PWD}"; HROOT="$(cd -- "$HROOT" && pwd)"
 cd "$HROOT"
@@ -16,6 +16,7 @@ for d in .ai-harness .claude .codex; do
     -not -path '*.ai-harness/scripts/bench/compare/*' \
     -not -path '*-workspace/*' \
     -not -path '*/evals/*' \
+    -not -path '*/skills/*-dev/*' \
     -not -path '*.codex/auth.json' \
     -not -path '*.codex/credentials.json' \
     -not -path '*.codex/*.key' \
