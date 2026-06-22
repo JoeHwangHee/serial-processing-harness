@@ -102,6 +102,58 @@ def contract_basename(path):
     return os.path.basename(path.rstrip(os.sep))
 
 
+def _candidate_roots():
+    """글로브가 상대 표기이므로, 절대 file_path를 상대화할 레포 루트 후보를 모은다.
+
+    실 CLI는 file_path를 절대경로로 넘기지만 rules.json의 allow_globs/path_glob은
+    레포 상대 표기다. 루트 후보는 CLAUDE_PROJECT_DIR과 active-run.json의
+    worktree_root(워크트리 루트)·contract_root(.plan)의 부모에서 모은다.
+    """
+    roots = []
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        roots.append(project_dir)
+
+    active_run_path = os.path.join(plan_dir(), "active-run.json")
+    try:
+        with open(active_run_path, "r", encoding="utf-8") as active_run_file:
+            active_run = json.load(active_run_file)
+    except Exception:
+        active_run = None
+
+    if isinstance(active_run, dict):
+        worktree_root = active_run.get("worktree_root")
+        if isinstance(worktree_root, str) and worktree_root:
+            roots.append(worktree_root)
+        contract_root = active_run.get("contract_root")
+        if isinstance(contract_root, str) and contract_root:
+            roots.append(os.path.dirname(contract_root.rstrip(os.sep)))
+
+    seen = set()
+    unique = []
+    for root in roots:
+        if root and root not in seen:
+            seen.add(root)
+            unique.append(root)
+    return unique
+
+
+def match_paths(file_path):
+    """원본 file_path와, 레포 루트 후보 기준 상대경로 후보를 함께 반환한다.
+
+    원본(절대)도 후보에 남겨, 상대 envelope를 쓰던 기존 합성 테스트도 통과한다.
+    """
+    candidates = [file_path]
+    if isinstance(file_path, str) and os.path.isabs(file_path):
+        for root in _candidate_roots():
+            root_norm = root.rstrip(os.sep)
+            if file_path.startswith(root_norm + os.sep):
+                rel = file_path[len(root_norm) + 1:]
+                if rel and rel not in candidates:
+                    candidates.append(rel)
+    return candidates
+
+
 def rule_enforces_hook(rule):
     enforce = rule.get("enforce")
     if isinstance(enforce, str):
@@ -134,8 +186,9 @@ def allowed_by_scope(rules_doc, file_path):
     if not isinstance(allow_globs, list):
         return True
 
+    paths = match_paths(file_path)
     return any(
-        isinstance(glob, str) and fnmatch.fnmatch(file_path, glob)
+        isinstance(glob, str) and any(fnmatch.fnmatch(path, glob) for path in paths)
         for glob in allow_globs
     )
 
@@ -154,7 +207,7 @@ def detect_proposed_content(rules_doc, file_path, content):
         if not isinstance(path_glob, str) or not isinstance(forbid_regex, str):
             continue
 
-        if not fnmatch.fnmatch(file_path, path_glob):
+        if not any(fnmatch.fnmatch(path, path_glob) for path in match_paths(file_path)):
             continue
 
         try:
